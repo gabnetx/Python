@@ -2,6 +2,7 @@ import subprocess
 import os
 import RPi.GPIO as GPIO
 import time
+import socket
 
 
 FAN_PWM = 18
@@ -173,8 +174,8 @@ def fan_power_read():
     return round(fan_power,1)
 
 
-
-def getIP(ifaces=['wlan0', 'eth0']):
+#GABO: No hay wlan0, la quite del codigo
+def getIP(ifaces=['eth0']):
     import re
     if isinstance(ifaces, str):
         ifaces = [ifaces]
@@ -187,6 +188,15 @@ def getIP(ifaces=['wlan0', 'eth0']):
             ipv4 = ipv4.groups()[0]
             return ipv4
     return False
+
+#GABO: Nueva funcion 
+def getHostName():
+    try:
+        hostname = socket.gethostname()
+        hostname = hostname.upper()
+        return hostname
+    except Exception as e:
+        return f"Error: {e}"
 
 def pid_control():
     global fan_power
