@@ -1,338 +1,225 @@
-#!/usr/bin/ python3
-# -*- coding:utf-8 -*-
-import RPi.GPIO as GPIO
-import sys
+import subprocess
 import os
-import logging
+import RPi.GPIO as GPIO
 import time
-from PIL import Image,ImageDraw,ImageFont
-import traceback
-from utils import *
-from page import *
-import threading
+import socket
 
-run_command("sudo resize2fs /dev/mmcblk0p2")
-#Menu_page_protect
-# Menu_page_protect_flag = 0
 
-#background_color
-background_color_config = 255
+FAN_PWM = 18
+LED_PWM = 26
+fan_pwn_freq = 100
+led_pwn_freq = 1
 
-#page_mode and flag
-page_mode_val = 0
-page_quantity = 3
+FAN_MAX = 100
+FAN_MIN = 20
+fan_power = 0
 
-#button_val
-current_page = 1
-last_page = -1
-back_button_press_val = 0
-button_press_protect = 0
-ok_button_press_val = 1
-menu_button_val = 1
-
-#key_pin_num
-KEY_BACK = 6
-KEY_OK = 5
-KEY_ADD = 13
-KEY_SUB = 19
-
-#GPIO_Irq_Init
+GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(KEY_BACK,GPIO.IN,GPIO.PUD_UP)
-GPIO.setup(KEY_OK,GPIO.IN,GPIO.PUD_UP)
-GPIO.setup(KEY_ADD,GPIO.IN,GPIO.PUD_UP)
-GPIO.setup(KEY_SUB,GPIO.IN,GPIO.PUD_UP)
+output_list = [FAN_PWM,LED_PWM]
+GPIO.setup(output_list, GPIO.OUT)
 
-page = Page(background_color_config)
-page.timer = 1
-
-menu_image = Image.new('1', (epd.height, epd.width), 255)
-menu_draw = ImageDraw.Draw(menu_image)
+fan_pwm_pin = GPIO.PWM(FAN_PWM, fan_pwn_freq)
+led_pwm_pin = GPIO.PWM(LED_PWM, led_pwn_freq)
+fan_pwm_pin.start(0)
+led_pwm_pin.start(50)
 
 
+class PID():
+    def __init__(self, P=1, I=1, D=1, expect=0):
+        self.P = float(P)
+        self.I = float(I)
+        self.D = float(D)
+        self.expect = expect
+        self.error = 0
+        self.last_error = 0
+        self.error_sum = 0
+
+    @property
+    def pval(self):
+        return self.error
+
+    @property
+    def ival(self):
+        self.error_sum += self.error
+        return self.error_sum
+
+    @property
+    def dval(self):
+        return self.error - self.last_error
+
+    def run(self, value, mode="PID"):
+        self.last_error = self.error
+        self.error = value - self.expect
+        # print(self.error, self.last_error, self.pval, self.P)
+        result_p = self.P * self.pval
+        result_i = self.I * self.ival
+        result_d = self.D * self.dval
+        mode = mode.upper()
+        result = 0.0
+        if "P" in mode:
+            result += result_p
+        if "I" in mode:
+            result += result_i
+        if "D" in mode:
+            result += result_d
+        return result
+
+#run_command linux
+def run_command(cmd=""):
+    import subprocess
+    p = subprocess.Popen(
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    result = p.stdout.read().decode('utf-8')
+    status = p.poll()
+    # print(result)
+    # print(status)
+    return status, result
+
+def do(msg="", cmd=""):
+    print(" - %s..." % (msg), end='\r')
+    print(" - %s... " % (msg), end='')
+    status, result = eval(cmd)
+    # print(status, result)
+    if status == 0 or status == None or result == "":
+        print('Done')
+    else:
+        print('Error')
+        errors.append("%s error:\n  Status:%s\n  Error:%s" %
+                      (msg, status, result))
+
+def cpu_temperature():          # cpu_temperature
+    raw_cpu_temperature = subprocess.getoutput("cat /sys/class/thermal/thermal_zone0/temp")
+    cpu_temperature = round(float(raw_cpu_temperature)/1000,1)               # convert unit
+    cpu_temperature = str(cpu_temperature)
+    return cpu_temperature
+
+def gpu_temperature():          # gpu_temperature(
+    raw_gpu_temperature = subprocess.getoutput( 'vcgencmd measure_temp' )
+    gpu_temperature = round(float(raw_gpu_temperature.replace( 'temp=', '' ).replace( '\'C', '' )), 1)
+    gpu_temperature = str(gpu_temperature)
+    return gpu_temperature
+
+def cpu_usage():                # cpu_usage
+    # result = str(os.popen("top -n1 | awk '/Cpu\(s\):/ {print($2)}'").readline().strip())
+    result = os.popen("mpstat").read().strip()
+    result = result.split('\n')[-1].split(' ')[-1]
+    result = round(100 - float(result), 2)
+    result = str(result)
+    # print(result)
+    return result
+
+def disk_space():               # disk_space
+    p = os.popen("df -h /")
+    i = 0
+    while 1:
+        i = i +1
+        line = p.readline()
+        if i==2:
+            return line.split()[1:5]
+
+def portable_hard_disk_info():
+    disk_num = os.popen("df -h | grep '/dev/sd' -c")
+    phd = os.popen("df -h | grep '/dev/sd'")
+    i = 0
+    phd_line = disk_num.readline()
+
+    line_list = []
+    if int(phd_line) != 0:
+        while 1:
+            i = i +1
+            line = phd.readline()
+            line_list.append(line.split()[0:6])
+            if i==int(phd_line):
+                return line_list
+    else:
+        return []
+
+def ram_info():
+    p = os.popen('free')
+    i = 0
+    while 1:
+        i = i + 1
+        line = p.readline()
+        if i==2:
+            return list(map(lambda x:round(int(x) / 1000,1), line.split()[1:4]))
+
+def pi_read():
+    result = {
+        "cpu_temperature": cpu_temperature(),
+        "gpu_temperature": gpu_temperature(),
+        "cpu_usage": cpu_usage(),
+        "disk": disk_space(),
+        "ram": ram_info(),
+        # "battery": power_read(),
+    }
+    return result
+
+# def fan_control(temp = 0):
+#     if temp >=68:
+#         fan_duty_cycle = round(float(temp-67)*30,1)
+#         led_freq = int(temp-67)
+#         if  fan_duty_cycle >= 100:
+#             fan_duty_cycle = 100
+
+#         fan_pwm_pin.ChangeDutyCycle(fan_duty_cycle)
+#         led_pwm_pin.ChangeDutyCycle(100)
+
+#     else:
+#         fan_pwm_pin.ChangeDutyCycle(0)
+#         led_pwm_pin.ChangeDutyCycle(0)
+
+def fan_power_read():
+    global fan_power
+    return round(fan_power,1)
 
 
-#KEY_IRQ_FUNC
-def KEY_ADD_FUNC(KEY_ADD):
-    global current_page,button_press_protect,menu_button_val,Menu_item_len,page_mode_val,page_quantity
+#GABO: No hay wlan0, la quite del codigo
+def getIP(ifaces=['eth0']):
+    import re
+    if isinstance(ifaces, str):
+        ifaces = [ifaces]
+    for iface in list(ifaces):
+        search_str = 'ip addr show {}'.format(iface)
+        result = os.popen(search_str).read()
+        com = re.compile(r'(?<=inet )(.*)(?=\/)', re.M)
+        ipv4 = re.search(com, result)
+        if ipv4:
+            ipv4 = ipv4.groups()[0]
+            return ipv4
+    return False
 
-    if button_press_protect == 1 and page_mode_val == 1:
-        page.change_val(0)
-        if current_page < page_quantity:
-            current_page += 1
-        else:
-            current_page = 1
-
-
-    if button_press_protect == 0:
-        page.change_val(0)
-        if current_page < page_quantity:
-            current_page += 1
-        else:
-            current_page = 1
-        if menu_button_val < Menu_item_len:
-            menu_button_val += 1
-        else:
-            menu_button_val = 1
-    # print(current_page)
-    # print(button_press_protect)
-    button_press_protect = 0
-
-
-def KEY_SUB_FUNC(KEY_SUB):
-    global current_page,button_press_protect,menu_button_val,Menu_item_len,page_mode_val,page_quantity
-
-    if button_press_protect == 1 and page_mode_val == 1:
-        page.change_val(0)
-        if current_page > 1:
-            current_page -= 1
-        else:
-            current_page = page_quantity
-
-    if button_press_protect == 0:
-        page.change_val(0)
-        if current_page > 1:
-            current_page -= 1
-        else:
-            current_page = page_quantity
-
-        if menu_button_val > 1:
-            menu_button_val -= 1
-        else:
-            menu_button_val = Menu_item_len
-    button_press_protect = 0
-    # print(current_page)
-    # print(button_press_protect)
-
-def KEY_BACK_FUNC(KEY_BACK):
-    global back_button_press_val,button_press_protect,page_mode_val,page_quantity
-
-    # if button_press_protect == 1 and page_mode_val == 1:
-    if page_mode_val == 1:
-        page.change_val(0)
-        back_button_press_val += 1
-      #  print(back_button_press_val)
-    if back_button_press_val > 2:
-        page.change_val(0)
-        back_button_press_val = 0
-
-    if button_press_protect == 0:
-        # page.change_val(0)
-        back_button_press_val += 1
-
-    # print("button_press_protect: ",button_press_protect)
-    # print("back_button_press_val: ",back_button_press_val)
-
-def KEY_OK_FUNC(KEY_OK):
-    global last_page,button_press_protect,ok_button_press_val,page_mode_val,page_quantity
-
-    if button_press_protect == 0:
-        ok_button_press_val = -1*ok_button_press_val
-        if page_mode_val == 0:
-            last_page = -1
-
-#Menu class
-class Menu_item_templates():
-    global back_button_press_val,last_page,current_page,ok_button_press_val,\
-    menu_button_val,Menu_item_len,Menu_item_dict,menu_image,menu_draw
-    def __init__(self,item_name = "item_name",choise_button_one = "NO",choice_button_two = "YES"):
-        self.item_name = item_name
-        self.choice_button_one = choise_button_one
-        self.choice_button_two = choice_button_two
-        # self.menu_image = Image.new('1', (epd.height, epd.width), 255)
-        # menu_draw = ImageDraw.Draw(self.menu_image)
-        self.his_button_val = -1
-        self.choice_button_flag = -1
-        self.choice_button_color = 255
-        self.linux_cmd_1 = ":"
-        self.linux_cmd_2 = ":"
-        self.python_cmd_1 = 'None'
-        self.python_cmd_2 = 'None'
-        self.item_name_length = len(item_name)
-        # self.background_color_config = 255
-        # self.page_mode_val = 0
-
-    def linux_cmd(self,input_cmd_1 = ":",input_cmd_2 = ":"):
-        # do(msg=input_msg,cmd='run_command("intput_cmd")')
-        self.linux_cmd_1 = input_cmd_1
-        self.linux_cmd_2 = input_cmd_2
-
-    def python_cmd(self,input_cmd_1 = 'None',input_cmd_2 = 'None'):
-        self.python_cmd_1 = input_cmd_1
-        self.python_cmd_2 = input_cmd_2
-
-    def run_linux_cmd(self,linux_cmd):
-        run_command(linux_cmd)
-
-    def run_python_cmd(self,python_cmd):
-        global page_mode_val,background_color_config
-        exec(python_cmd)
-
-
-    def item_main(self):
-        global back_button_press_val
-        while True:
-            menu_draw.rectangle((0, 95, 250, 120), fill = 255)
-            if self.his_button_val != menu_button_val:
-                self.choice_button_flag *= -1
-                self.his_button_val = menu_button_val
-
-            menu_draw.rectangle((40, 100, 100, 120), fill = 128 - self.choice_button_flag * self.choice_button_color)
-            menu_draw.rectangle((160, 100, 220, 120), fill = 128 + self.choice_button_flag * self.choice_button_color)
-            menu_draw.text((48, 100), self.choice_button_one, font = font(18), fill = 128 + self.choice_button_flag * self.choice_button_color)
-            menu_draw.text((170, 100), self.choice_button_two, font = font(18), fill = 128 - self.choice_button_flag * self.choice_button_color)
-            epd.displayPartial(epd.getbuffer(menu_image))
-
-            if ok_button_press_val == 1:
-
-                if self.choice_button_flag == -1:
-                    self.run_python_cmd(self.python_cmd_2)
-                    self.run_linux_cmd(self.linux_cmd_2)
-                else:
-                    self.run_python_cmd(self.python_cmd_1)
-                    self.run_linux_cmd(self.linux_cmd_1)
-                menu_draw.rectangle((0, 90, 250, 120), fill = 255)
-                epd.displayPartial(epd.getbuffer(menu_image))
-                back_button_press_val = 0
-                break
-
-###linux_item_cmd
-
-##change background color
-item_3_cmd_1 ="""
-global background_color_config
-background_color_config = 255
-"""
-item_3_cmd_2 ="""
-global background_color_config
-background_color_config = 0
-"""
-
-##change page refresh mode
-item_4_cmd_1 ="""
-global page_mode_val
-page_mode_val = 0
-"""
-item_4_cmd_2 ="""
-global page_mode_val
-page_mode_val = 1
-"""
-###item_object
-
-item_1 = Menu_item_templates(item_name = "shutdown",choise_button_one = "NO",choice_button_two = "YES")
-item_1.python_cmd(input_cmd_2 ="page.shutdown_Animation()")
-item_1.linux_cmd(input_cmd_2 ="sudo poweroff")
-
-item_2 = Menu_item_templates(item_name = "reboot",choise_button_one = "NO",choice_button_two = "YES")
-item_2.linux_cmd(input_cmd_2 ="sudo reboot")
-
-item_3 = Menu_item_templates(item_name = "background color",choise_button_one = "white",choice_button_two = "black")
-item_3.python_cmd(item_3_cmd_1,item_3_cmd_2)
-
-item_4 = Menu_item_templates(item_name = "page always refresh",choise_button_one = "NO",choice_button_two = "YES")
-item_4.python_cmd(item_4_cmd_1,item_4_cmd_2)
-
-###item_example
-
-# item_5 = Menu_item_templates(item_name = "item_5",choise_button_one = "OK",choice_button_two = "hello")
-# item_5.python_cmd("print('item_5_cmd1')","print('item_5_cmd2')")
-
-# item_6 = Menu_item_templates(item_name = "item_6",choise_button_one = "NO",choice_button_two = "YES")
-# item_6.python_cmd("print('item_6_cmd1')","print('item_6_cmd2')")
-
-# item_7 = Menu_item_templates(item_name = "item_7",choise_button_one = "NO",choice_button_two = "YES")
-# item_7.python_cmd("print('item_7_cmd1')","print('item_7_cmd2')")
-
-###Menu_dict and length
-Menu_item_dict = {1:item_1.item_name, 2:item_2.item_name, 3:item_3.item_name, 4:item_4.item_name}
-Menu_item_len = len(Menu_item_dict)
-
-#GPIO_IRQ_RELATION
-GPIO.add_event_detect(KEY_BACK,GPIO.RISING,KEY_BACK_FUNC,200)
-GPIO.add_event_detect(KEY_OK,GPIO.RISING,KEY_OK_FUNC,200)
-GPIO.add_event_detect(KEY_ADD,GPIO.RISING,KEY_ADD_FUNC,200)
-GPIO.add_event_detect(KEY_SUB,GPIO.RISING,KEY_SUB_FUNC,200)
-
-###Menu Page
-def Menu_Page():
-    global back_button_press_val,last_page,current_page,ok_button_press_val,\
-    menu_button_val,Menu_item_len,Menu_item_dict,background_color_config
-
-    epd.init(epd.FULL_UPDATE)
-    epd.displayPartBaseImage(epd.getbuffer(menu_image))
-    epd.init(epd.PART_UPDATE)
-
-    menu_button_val = 1
-    ok_button_press_val = 1
-    back_button_press_val = 0
-    choice_button_flag = -1
-    # choice_button_color = 255
-    # his_button_val = -1
-
-    while (True):
-        menu_draw.rectangle((0, 0, 250, 250), fill = 255)
-        menu_draw.text((80, 0), "MENU INFO", font = font(18), fill = 0)
-        menu_draw.line([(0,20),(250,20)], fill = 0,width = 2)
-        Menu_page_num = (menu_button_val - 1) / 3
-
-        for i in range(1,4):
-            page_item_num = int(i+3*int(Menu_page_num))
-            if page_item_num <= Menu_item_len:
-                menu_draw.text((10, (2*i+1)*10), str(page_item_num) + '. ' + Menu_item_dict[page_item_num], font = font(18), fill = 0)
-            else:
-                break
-
-        rectangle_coor_num =  (menu_button_val-1) % 3
-        menu_draw.rectangle((0, 2*(rectangle_coor_num+1)*10+10, 245, 2*(rectangle_coor_num+1)*10+30), outline = 0)
-        epd.displayPartial(epd.getbuffer(menu_image))
-
-        if ok_button_press_val == -1:
-            eval("item_%s.item_main()" % menu_button_val)
-
-            choice_button_flag = -1
-            # his_button_val = -3
-            menu_button_val = 1
-            current_page = 1
-
-        if back_button_press_val > 0:
-            back_button_press_val = 0
-            break
-
-###Main Service
-def main():
-    global current_page,last_page,button_press_protect,background_color_config,page_mode_val
-
-    while True:
-        page.background_color = background_color_config
-        if current_page != last_page:
-            # print("main_page")
-            button_press_protect = 1
-            last_page = current_page
-            page.mode = page_mode_val
-            page(current_page)
-        elif back_button_press_val >= 2:
-            # print("menu_page")
-            Menu_Page()
-            current_page = 1
-            last_page = -3
-            # print("quit Menu")
-
-        button_press_protect = 0
-
-###main_thread
-def main_thread():
-    threads = []
-    t1 = threading.Thread(target=main)
-    threads.append(t1)
-    t2 = threading.Thread(target=pid_control)
-    threads.append(t2)
-    t1.start()
-    t2.start()
-
-if __name__ =='__main__':
+#GABO: Nueva funcion 
+def getHostName():
     try:
-        main_thread()
-    except KeyboardInterrupt:
-        print("quit")
-        exit()
+        hostname = socket.gethostname()
+        hostname = hostname.upper()
+        return hostname
+    except Exception as e:
+        return f"Error: {e}"
 
+def pid_control():
+    global fan_power
+    pid = PID(
+        P = 0.5,
+        I = 1,
+        D = 1,
+        expect = 50,
+    )
+    dc = 100
+    i = 0
+    while True:
+        temp = (float(cpu_temperature())+float(gpu_temperature()))/2.0
+        # print(temp)
+        dc += pid.run(temp, mode="PD")
+        dc = min(FAN_MAX, max(FAN_MIN, dc))
+        fan_power = dc
+        # log_temp(i, temp, dc)
+        # print(dc )
+        fan_pwm_pin.ChangeDutyCycle(dc)
+        led_pwm_pin.ChangeDutyCycle(dc)
+        i += 1
+        # time.sleep(1)
+
+# if __name__ == '__main__':
+#     print(portable_hard_disk_info())
