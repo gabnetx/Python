@@ -134,14 +134,27 @@ def portable_hard_disk_info():
     else:
         return []
 
+#GABO: Nueva forma de obtener datos RAM
 def ram_info():
-    p = os.popen('free')
-    i = 0
-    while 1:
-        i = i + 1
-        line = p.readline()
-        if i==2:
-            return list(map(lambda x:round(int(x) / 1000,1), line.split()[1:4]))
+    try:
+        #Se obtiene la informacion en un array 
+        # total,used,free,shared,buff/cache,available
+        prc =   'free --mega  | grep Mem  | cut -d":" -f2'
+        ram =   str(os.popen(prc).read())
+        return list( map(lambda x:round(int(x),1), ram.split()[0:6]) )
+    except Exception as e:
+        return "Error: " + str(e)
+
+#GABO: Nueva forma de obtener datos SWAP
+def swap_info():
+    try:
+        #Se obtiene la informacion en un array
+        # total,used,free
+        prc =   'free --mega  | grep Swap  | cut -d":" -f2'
+        swap =   str(os.popen(prc).read())
+        return list( map(lambda x:round(int(x),1), swap.split()[0:3]) )
+    except Exception as e:
+        return "Error: " + str(e)
 
 def pi_read():
     result = {
@@ -150,23 +163,10 @@ def pi_read():
         "cpu_usage": cpu_usage(),
         "disk": disk_space(),
         "ram": ram_info(),
+        "swap": swap_info(),
         # "battery": power_read(),
     }
     return result
-
-# def fan_control(temp = 0):
-#     if temp >=68:
-#         fan_duty_cycle = round(float(temp-67)*30,1)
-#         led_freq = int(temp-67)
-#         if  fan_duty_cycle >= 100:
-#             fan_duty_cycle = 100
-
-#         fan_pwm_pin.ChangeDutyCycle(fan_duty_cycle)
-#         led_pwm_pin.ChangeDutyCycle(100)
-
-#     else:
-#         fan_pwm_pin.ChangeDutyCycle(0)
-#         led_pwm_pin.ChangeDutyCycle(0)
 
 def fan_power_read():
     global fan_power
@@ -206,7 +206,7 @@ def getTTL():
         hr =    round((ttlr / 3600 % 24),2)
         day =   round((ttlr / 86400),2)
         #return day + "d-" + hr + "hr-" + minu + "m"
-        return "{:.0f}d-{:.0f}hr-{:.0f}m".format(day,hr,minu)
+        return "{:.0f}d-{:.0f}hr-{:.0f}mi".format(day,hr,minu)
     except Exception as e:
         return "Error: " + str(e)
 
