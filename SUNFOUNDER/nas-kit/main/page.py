@@ -3,6 +3,7 @@ import sys
 import os
 import logging
 import time
+#PIL is the Python Imaging Library which provides the python interpreter with image editing capabilities.
 from PIL import Image,ImageDraw,ImageFont
 import traceback
 from utils import *
@@ -24,10 +25,8 @@ epd = epd2in13_V2.EPD()
 # font21 = ImageFont.truetype(os.path.join(fontdir, 'consola.ttf'), 21)
 # font24 = ImageFont.truetype(os.path.join(fontdir, 'consola.ttf'), 24)
 
+#Load a TrueType or OpenType font from a file or file-like object, and create a font object.
 font = lambda x: ImageFont.truetype(os.path.join(fontdir, 'consola.ttf'), x)
-#GABO
-fontFreeMono = lambda x: ImageFont.truetype(os.path.join(fontdir, 'FreeMono.ttf'), x)
-fontSpeedrace = lambda x: ImageFont.truetype(os.path.join(fontdir, 'speedrace.ttf'), x)
 
 #Page class
 class Page():
@@ -85,9 +84,9 @@ class Page():
             self.refresh_num += 1
             self.clear_count += 1
             if self.refresh_num == 5 and self.mode == 0:
-
-                self.draw.ellipse((2,2,19,19),fill = 255-self.background_color)
-                self.draw.text((6, 1), 'S', font = font(16), fill = self.background_color)
+                #Gabo comento el circulo
+                #self.draw.ellipse((2,2,19,19),fill = 255-self.background_color)
+                #self.draw.text((6, 1), 'S', font = font(16), fill = self.background_color)
                 self.update()
                 break
             while self.page_change_flag and time.time()-t < self.timer:
@@ -101,8 +100,8 @@ class Page():
     def page_1_update(self):
         pi_msg = pi_read()
         # fan_control(int((float(cpu_temperature())+float(gpu_temperature()))/2.0))
-
-        self.draw.text((20, 0), "{0} | Life:{1}".format( getHostName(),getTTL() ), fontSpeedrace = font(20), fill = 255 - self.background_color)
+        self.draw.rectangle((10,0,245,16),fill = 255-self.background_color)
+        self.draw.text((20, 0), "{0} | Life:{1}".format( getHostName(),getTTL() ), font = font(14), fill = self.background_color)
         self.draw.line([(0,22),(250,22)], fill = 255 - self.background_color,width = 2)
 
         self.draw.rectangle((0, 24, int(12.5*len(str(getIP()))), 47), fill = 255 - self.background_color)
@@ -113,11 +112,13 @@ class Page():
         self.draw.rectangle((0, 75, 234, 85), outline = 255-self.background_color)
         self.draw.rectangle((0, 75, 234 * float(pi_msg['cpu_usage'])/100, 85), fill = 255-self.background_color)
 
-        Ram_usage = round(pi_msg['ram'][1] / pi_msg['ram'][0],2)
+        #Ram_usage = round(pi_msg['ram'][1],2 / pi_msg['ram'][0],2)
+        Ram_usage = round(pi_msg['ram'][0] / pi_msg['ram'][1])
         self.draw.rectangle((37, 88, 105, 108), fill = self.background_color)
         self.draw.rectangle((175, 88, 235, 108), fill = self.background_color)
-        self.draw.text((0, 88), 'RAM: ' + str(Ram_usage) + '%', font = font(16), fill = 255-self.background_color)
-        self.draw.text((120, 88), 'total: ' + str(pi_msg['ram'][0]) + 'M', font = font(16), fill = 255-self.background_color)
+        self.draw.text((0, 88), 'RAM:' + str(Ram_usage) + '%', font = font(16), fill = 255-self.background_color)
+        self.draw.text((65, 88), 'Total:' + str(pi_msg['ram'][0]) + 'MB', font = font(16), fill = 255-self.background_color)
+        self.draw.text((170, 88), 'Swap:' + str(pi_msg['swap'][1]) + 'MB', font = font(16), fill = 255-self.background_color)
         self.draw.rectangle((0, 110, 234, 120), outline = 255-self.background_color)
         self.draw.rectangle((0, 110, 234 * Ram_usage/100, 120), fill = 255-self.background_color)
 
