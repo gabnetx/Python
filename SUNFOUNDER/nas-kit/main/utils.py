@@ -206,7 +206,7 @@ def getTTL():
         hr =    round((ttlr / 3600 % 24),2)
         day =   round((ttlr / 86400),2)
         #return day + "d-" + hr + "hr-" + minu + "m"
-        return "{:.0f}d-{:.0f}hr-{:.0f}mi".format(day,hr,minu)
+        return "{:.0f}d-{:.0f}hr-{:.0f}min".format(day,hr,minu)
     except Exception as e:
         return "Error: " + str(e)
 
