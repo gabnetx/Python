@@ -10,8 +10,8 @@ import traceback
 from utils import *
 from page import *
 import threading
-
-run_command("sudo resize2fs /dev/mmcblk0p2")
+# GABO: se comenta linea siguiente
+#run_command("sudo resize2fs /dev/mmcblk0p2")
 #Menu_page_protect
 # Menu_page_protect_flag = 0
 
