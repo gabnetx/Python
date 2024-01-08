@@ -100,27 +100,22 @@ class Page():
     def page_1_update(self):
         pi_msg = pi_read()
         # fan_control(int((float(cpu_temperature())+float(gpu_temperature()))/2.0))
-        self.draw.rectangle((10,0,245,16),fill = 255-self.background_color)
-        self.draw.text((20, 0), "{0} | Life:{1}".format( getHostName(),getTTL() ), font = font(14), fill = self.background_color)
+        self.draw.rectangle((5,0,245,18),fill = 255-self.background_color)
+        self.draw.text((7, 0), "{0} | Up:{1}".format( getHostName(),getTTL() ), font = font(16), fill = self.background_color)
         self.draw.line([(0,22),(250,22)], fill = 255 - self.background_color,width = 2)
-
-        self.draw.rectangle((0, 24, int(12.5*len(str(getIP()))), 47), fill = 255 - self.background_color)
-        self.draw.text((0, 26), 'IP: ' + str(getIP()), font = font(16), fill = self.background_color)
-
-        self.draw.rectangle((37, 53, 105, 73), fill = self.background_color)
-        self.draw.text((0, 53), 'CPU: ' + pi_msg['cpu_usage'] + '%', font = font(16), fill = 255-self.background_color)
-        self.draw.rectangle((0, 75, 234, 85), outline = 255-self.background_color)
-        self.draw.rectangle((0, 75, 234 * float(pi_msg['cpu_usage'])/100, 85), fill = 255-self.background_color)
-
-        #Ram_usage = round(pi_msg['ram'][1],2 / pi_msg['ram'][0],2)
+        #seccion IP, Rectangulo blanco
+        self.draw.rectangle((0, 24, int(12.5*len(str(getIP()))), 42), fill = self.background_color)
+        self.draw.text((0, 26), 'IP: ' + str(getIP()), font = font(18), fill = 255 - self.background_color)
+        #Seccion CPU, Rectangulo blanco
+        self.draw.rectangle((0, 44, 250, 86), fill = self.background_color)
+        self.draw.text((0, 46), 'CPU:' + pi_msg['cpu_usage'] + '% Temp.:' + pi_msg['cpu_temperature'] + '°C', font = font(20), fill = 255-self.background_color)
+        #Seccion de RAM
         Ram_usage = round(pi_msg['ram'][0] / pi_msg['ram'][1])
-        self.draw.rectangle((37, 88, 105, 108), fill = self.background_color)
-        self.draw.rectangle((175, 88, 235, 108), fill = self.background_color)
-        self.draw.text((0, 88), 'RAM:' + str(Ram_usage) + '%', font = font(16), fill = 255-self.background_color)
-        self.draw.text((65, 88), 'Total:' + str(pi_msg['ram'][0]) + 'MB', font = font(16), fill = 255-self.background_color)
-        self.draw.text((170, 88), 'Swap:' + str(pi_msg['swap'][1]) + 'MB', font = font(16), fill = 255-self.background_color)
-        self.draw.rectangle((0, 110, 234, 120), outline = 255-self.background_color)
-        self.draw.rectangle((0, 110, 234 * Ram_usage/100, 120), fill = 255-self.background_color)
+        self.draw.rectangle((0, 88, 250, 108), fill = self.background_color)
+        self.draw.text((0, 68), 'RAM:' + str(Ram_usage) + '%' + '  Total:' + str(pi_msg['ram'][0]) + 'MB', font = font(18), fill = 255-self.background_color)
+        self.draw.rectangle((0, 88, 234, 98), outline = 255-self.background_color)
+        self.draw.rectangle((0, 88, 234 * Ram_usage/100, 98), fill = 255-self.background_color)        
+        self.draw.text((0, 100), 'Swap Used/Tot:' + str(pi_msg['swap'][1]) + 'MB/' + str(pi_msg['swap'][0]) + 'MB', font = font(16), fill = 255-self.background_color)
 
 
     def page_2_setup(self):
